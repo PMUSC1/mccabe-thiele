@@ -1,262 +1,187 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
 
+# --- EXPERIMENTAL DATA (Replace with your full table) ---
+x_vle = np.array([0.0, 0.007,0.015,0.025,0.043,0.06,0.105,0.135,0.144,0.197,0.274,0.323,0.439,0.499,0.577,0.684,0.814])
+y_vle = np.array([0.0, 0.068,0.143,0.206,0.298,0.364,0.45,0.478,0.49,0.522,0.56,0.579,0.621,0.647,0.682,0.739,0.827])
 
-def eq_og(xa,relative_volatility):
-    ''' 
-    DESCRIPTION
-    Returns equilibrium data from an input 
-    of liquid composition (xa) and relative volatility
+def get_y_eq(x, x_data, y_data):
+    """Linearly interpolates VLE data to find y for a given x"""
+    return np.interp(x, x_data, y_data)
 
-    INPUTS: 
-    xa                      : Liquid Composition
-    relative_volatility     : Relative Volatility
+def get_x_eq(y, x_data, y_data):
+    """Linearly interpolates VLE data to find x for a given y (Inverse)"""
+    return np.interp(y, y_data, x_data)
 
-    OUTPUTS: 
-    ya                      : Vapour Composition 
-    '''
-    ya=(relative_volatility*xa)/(1+(relative_volatility-1)*xa)
-    # ya found using Dalton and Raoults laws
-    return ya
-
-def eq(xa,relative_volatility,nm):
-    ''' 
-    DESCRIPTION
-    Returns equilibrium data from an input 
-    of liquid composition (xa) and relative volatility
-    accounting for the Murphree Efficiency of the 
-    system
-
-    INPUTS: 
-    xa                      : Liquid Composition
-    relative_volatility     : Relative Volatility
-    nm                      : Murphree Efficiency
-
-    OUTPUTS: 
-    ya                      : Vapour Composition 
-    '''
-    ya=(relative_volatility*xa)/(1+(relative_volatility-1)*xa)
-    # ya found using Dalton and Raoults laws
-    ya=((ya-xa)*nm)+xa # using definition of murphree efficiency 
-    return ya
-
-def eq2(ya,relative_volatility,nm):
-    ''' 
-    DESCRIPTION
-    Returns equilibrium data from an input 
-    of liquid composition (ya) and relative volatility
-    accounting for the Murphree Efficiency of the 
-    system. This function is the inverse of eq(...) above.
-
-    INPUTS: 
-    ya                      : Vapour Composition
-    relative_volatility     : Relative Volatility
-    nm                      : Murphree Efficiency
-
-    OUTPUTS: 
-    xa                      : Liquid Composition 
-    '''
-    # inverse of eq() takes the form of a quadratic
-    a=((relative_volatility*nm)-nm-relative_volatility+1)
-    b=((ya*relative_volatility)-ya+nm-1-(relative_volatility*nm))
-    c=ya
-    xa=(-b-np.sqrt((b**2)-(4*a*c)))/(2*a) # solving quadratic using 
-                                          # quadratic formula
-    return xa
-
-def stepping_ESOL(x1,y1,relative_volatility,R,xd):
-    '''
-    DESCRIPTION:
-    Performs a single step over the ESOL
-    operating line.
-
-    INPUTS: 
-    x1                      : Initial liquid composition on ESOL
-    y1                      : Initial vapour composition on ESOL
-    relative_volatility     : Relative Volatility
-    R                       : Reflux Ratio
-    xd                      : Distillate Composition
-
-    OUTPUTS: 
-    x1      : Initial liquid composition 
-    x2      : Liquid composition after stepping
-    y1      : Initial vapour composition
-    y2      : Vapour composition after stepping
-
-    '''
-    x2=eq2(y1,relative_volatility,nm) #getting new liquid comp 
-    y2=(((R*x2)/(R+1))+(xd/(R+1))) #ESOL equation 
-    return x1,x2,y1,y2
-
-def stepping_SSOL(x1,y1,relative_volatility,\
-ESOL_q_x,ESOL_q_y,xb):
-    '''
-    DESCRIPTION:
-    Performs a single step over the SSOL
-    operating line.
-
-    INPUTS: 
-    x1                      : Initial liquid composition on ESOL
-    y1                      : Initial vapour composition on ESOL
-    relative_volatility     : Relative Volatility
-    ESOL_q_x                : Point at which ESOL intersects q-line (x)
-    ESOL_q_y                : Point at which ESOL intersects q-line (y)
-    xb                      : Bottoms composition 
-
-    OUTPUTS: 
-    x1      : Initial liquid composition 
-    x2      : Liquid composition after stepping
-    y1      : Initial vapour composition
-    y2      : Vapour composition after stepping
-
-    '''
-    x2=eq2(y1,relative_volatility,nm) # getting new liquid comp
-    m=((xb-ESOL_q_y)/(xb-ESOL_q_x)) # gradient of SSOL
-    c=ESOL_q_y-(m*ESOL_q_x) # intercept of SSOL
-    y2=(m*x2)+c # SSOL equation in form 'y=mx+c'
-    return x1,x2,y1,y2
-
-def McCabeThiele(PaVap,PbVap,R_factor,xf,xd,xb,q,nm):
-    '''
-    DESCRIPTION: 
-    Performs the McCabe-Thiele construction in order to calculate
-    optimum number of stages, and optimum feed stage. Also taking into 
-    account the Murphree Efficiency of the system. 
-
-    INPUTS: 
-    PaVap       :Vapour pressure of component a (more volatile)
-    PbVap       :Vapour pressure of component b (less volatile)
-    R_factor    :Amount Rmin is scaled by to obtain the actual reflux ratio
-    xf          :Feed composition 
-    xd          :Distillate composition 
-    xb          :Bottoms composition 
-    q           :Liquid fraction of feed
-    nm          :Murphree Efficiency
-
-    OUTPUTS: 
-    A McCabe-Thiele plot, displaying optimum number of equilibrium stages, 
-    optimum feed stage, actual reflux ratio, actual bottoms composition. 
-    '''
-    # Ensuring errors don't occur regarding dividing by 0
-    if q==1:
-        q-=0.00000001
-    if q==0:
-        q+=0.00000001
-
-    relative_volatility=PaVap/PbVap #obtaining relative volatility from definition 
-    xa=np.linspace(0,1,100) #creating x-axis
-    ya_og=eq_og(xa[:],relative_volatility) #getting original equilibrium data
-    ya_eq=eq(xa[:],relative_volatility,nm) #getting modified equilibrium data 
-    # taking into account the Murphree Efficiency 
-
-    x_line=xa[:] #creating data-points for y=x line
-    y_line=xa[:]
+def calculate_step_x(y_start, x_data, y_data, efficiency):
+    """Calculates the liquid composition (x) for a stage given the vapor (y),
+    accounting for Murphree Efficiency."""
+    x_ideal = get_x_eq(y_start, x_data, y_data)
+    # Definition of efficiency relative to the equilibrium curve
+    # x_actual moves only a percentage of the way towards x_ideal
+    # Note: Because we step y -> x (inverse), the efficiency formula applies to the x-change.
+    # Standard formula: nm = (y_n - y_n+1) / (y*_n - y_n+1). 
+    # For stepping down, we simplify to linear distance scaling on the x-axis for this graphical method.
+    x_actual = x_ideal # Start with ideal
     
-    # finding where the q-line intersects the equilibrium curve 
-    # takes the form of a quadratic equation 
-    al=relative_volatility
-    a=((al*q)/(q-1))-al+(al*nm)-(q/(q-1))+1-nm
-    b=(q/(q-1))-1+nm+((al*xf)/(1-q))-(xf/(1-q))-(al*nm)
-    c=xf/(1-q)
+    # We must determine the 'previous' x (which is the x on the operating line)
+    # Since we don't have it passed in simply here, we use the standard efficiency approximation:
+    # x_new = x_old - eff * (x_old - x_ideal). 
+    # However, since we are doing a full loop, we will handle efficiency inside the main loop 
+    # where we have access to 'x_old'.
+    return x_ideal
 
-    if q>1:
-        q_eqX=(-b+np.sqrt((b**2)-(4*a*c)))/(2*a)
-    else: 
-        q_eqX=(-b-np.sqrt((b**2)-(4*a*c)))/(2*a)
-    # where the q-line intersects the equilibrium curve (x-axis)
-    q_eqy=eq(q_eqX,relative_volatility,nm)
-    # where the q-line intersects the equilibrium curve (y-axis)
+def McCabeThiele_Advanced(x_vle, y_vle, R_factor, xf, xd, xb, q, nm, manual_feed_stage=None):
+    """
+    manual_feed_stage: Integer (e.g., 4) to force feed location. 
+                       Set to None for auto-optimization.
+    """
+    
+    # --- 1. SETUP & Q-LINE ---
+    if q == 1: q -= 1e-8
+    
+    # Find q-line intersection with Equilibrium Curve
+    xa_fine = np.linspace(0, 1, 500)
+    ya_eq = get_y_eq(xa_fine, x_vle, y_vle)
+    y_q_line = (q / (q - 1)) * xa_fine - (xf / (q - 1))
+    
+    idx = np.argwhere(np.diff(np.sign(ya_eq - y_q_line))).flatten()[0]
+    q_eqX, q_eqy = xa_fine[idx], ya_eq[idx]
 
-    theta_min=xd*(1-((xd-q_eqy)/(xd-q_eqX))) # ESOL y-intercept to obtain Rmin
-    R_min=(xd/theta_min)-1 # finding Rmin
-    R=R_factor*R_min # multiplying by R_factor to obtain R
-    theta=(xd/(R+1)) # finding new ESOL y-intercept
+    # --- 2. REFLUX & OPERATING LINES ---
+    # R_min calculation
+    m_min = (xd - q_eqy) / (xd - q_eqX)
+    R_min = m_min / (1 - m_min)
+    R = R_factor * R_min
+    
+    # Rectifying Line (ESOL) constants: y = mx + c
+    m_rect = R / (R + 1)
+    c_rect = xd / (R + 1)
+    
+    # Intersection of ESOL and q-line (Transition point for Optimal Feed)
+    m_q = q / (q - 1)
+    c_q = -xf / (q - 1)
+    ESOL_q_x = (c_q - c_rect) / (m_rect - m_q)
+    ESOL_q_y = m_rect * ESOL_q_x + c_rect
+    
+    # Stripping Line (SSOL) constants
+    # Slopes connects (ESOL_q_x, ESOL_q_y) and (xb, xb)
+    m_strip = (xb - ESOL_q_y) / (xb - ESOL_q_x)
+    c_strip = ESOL_q_y - (m_strip * ESOL_q_x)
 
-    ESOL_q_x=((theta-(xf/(1-q)))/((q/(q-1))-((xd-theta)/xd)))
-    # Where the new ESOL intercepts the q-line (x-axis)
-    ESOL_q_y=(ESOL_q_x*((xd-theta)/xd))+theta
-    # Where the new ESOL intercepts the q-line (y-axis)
+    # --- 3. PLOTTING SETUP ---
+    plt.figure(figsize=(9, 9))
+    plt.plot(x_vle, y_vle, 'b-', label='Equilibrium (Table)')
+    plt.plot([0,1], [0,1], 'k--', alpha=0.3)
+    
+    # Plot Operating Lines
+    # Rectifying (Top to Feed Intersection)
+    plt.plot([xd, ESOL_q_x], [xd, ESOL_q_y], 'k', linewidth=1.5, label='Rectifying Line')
+    # Stripping (Feed Intersection to Bottom)
+    plt.plot([xb, ESOL_q_x], [xb, ESOL_q_y], 'k', linewidth=1.5, label='Stripping Line')
+    # Feed Line
+    plt.plot([xf, ESOL_q_x], [xf, ESOL_q_y], 'g:', label='q-line')
 
+    plt.axvline(xd, color='k', linestyle=':', alpha=0.5)
+    plt.axvline(xb, color='k', linestyle=':', alpha=0.5)
+    plt.axvline(xf, color='k', linestyle=':', alpha=0.5)
 
-    plt.figure() # The following code plots the Mccabe Thiele diagram 
-    plt.axis([0,1,0,1]) #creating axes between 0-1
-    plt.plot([xd,xd],[0,xd],color='k',linestyle='--') # distillate comp line
-    plt.plot([xb,xb],[0,xb],color='k',linestyle='--') # bottoms comp line 
-    plt.plot([xf,xf],[0,xf],color='k',linestyle='--') # feed comp line 
+    # --- 4. STEPPING LOGIC ---
+    curr_x = xd
+    curr_y = xd
+    stage_count = 0
+    
+    # We loop until we pass the bottoms composition
+    while curr_x > xb:
+        stage_count += 1
+        
+        # A. Determine which Operating Line equation to use for y
+        # -----------------------------------------------------
+        # If Manual: Switch if stage > manual_feed_stage
+        # If Auto: Switch if x < ESOL_q_x (Intersection point)
+        is_rectifying = True
+        
+        if manual_feed_stage is not None:
+            if stage_count > manual_feed_stage:
+                is_rectifying = False
+        else:
+            if curr_x < ESOL_q_x:
+                is_rectifying = False
+        
+        # B. Calculate the "Ideal" Equilibrium point (x_ideal)
+        # ----------------------------------------------------
+        # The step starts at y = curr_y. We find x on the equilibrium curve.
+        x_ideal = get_x_eq(curr_y, x_vle, y_vle)
+        
+        # C. Apply Efficiency & Reboiler Logic
+        # ------------------------------------
+        # Standard efficiency: x_actual = x_prev - nm * (x_prev - x_ideal)
+        # BUT: If this step takes us past xb, it is the Reboiler.
+        # The Reboiler is an equilibrium stage => 100% efficiency.
+        
+        # First, calculate tentative step with Tray Efficiency
+        x_next_tentative = curr_x - nm * (curr_x - x_ideal)
+        
+        if x_next_tentative < xb:
+            # We are crossing the finish line! This is the Reboiler step.
+            # Force 100% efficiency (Ideal Equilibrium)
+            x_next = x_ideal 
+            eff_used = 1.0
+            print(f"Stage {stage_count} is Reboiler (100% Eff)")
+        else:
+            # Normal Tray
+            x_next = x_next_tentative
+            eff_used = nm
+        
+        # D. Calculate new y on Operating Line
+        # ------------------------------------
+        # We draw vertical line down to x_next, then find y on the OL
+        if is_rectifying:
+            y_next = m_rect * x_next + c_rect
+        else:
+            y_next = m_strip * x_next + c_strip
+            
+        # E. Draw the Step
+        # ----------------
+        # Horizontal (Equilibrium/Efficiency step)
+        plt.plot([curr_x, x_next], [curr_y, curr_y], 'r-')
+        # Vertical (Operating Line step)
+        # Don't draw vertical line if we are finished (below xb)
+        if x_next > xb:
+            plt.plot([x_next, x_next], [curr_y, y_next], 'r-')
+            plt.text(x_next + 0.01, curr_y - 0.02, str(stage_count), fontsize=8)
+        else:
+            plt.text(x_next + 0.01, curr_y - 0.02, f"{stage_count}(Reb)", fontsize=8)
 
-    #plt.plot([xd,0],[xd,theta_min],color='r',linestyle='--') # ESOL at Rmin
-    '''UN-COMMENT TO SEE ESOL FOR Rmin ^^^'''
+        # Update for next loop
+        curr_x = x_next
+        curr_y = y_next
+        
+        # Safety break to prevent infinite loops if data is bad
+        if stage_count > 100: 
+            print("Max stages reached!")
+            break
 
-    plt.plot([xd,ESOL_q_x],[xd,ESOL_q_y],color='k') # ESOL at R
-    plt.plot([xb,ESOL_q_x],[xb,ESOL_q_y],color='k') # SSOL 
-
-    x1,x2,y1,y2=stepping_ESOL(xd,xd,relative_volatility,R,xd)
-    step_count=1 # current number of equilibrium stages
-    plt.plot([x1,x2],[y1,y1],color='k') # Step_1
-    plt.plot([x2,x2],[y1,y2],color='k') # Step_2
-    plt.text(x2-0.045,y1+0.045,step_count)
-    while x2>ESOL_q_x: # up until the q-line, step down
-        x1,x2,y1,y2=stepping_ESOL(x2,y2,relative_volatility,R,xd)
-        plt.plot([x1,x2],[y1,y1],color='k') 
-        plt.plot([x2,x2],[y1,y2],color='k') 
-        step_count+=1 # incrementing equilibrium stage count 
-        plt.text(x2-0.045,y1+0.045,step_count) # label the stage
-
-    feed_stage=step_count # obtaining optimum feed stage
-
-    x1,x2,y1,y2=stepping_SSOL(x1,y1,relative_volatility\
-    ,ESOL_q_x,ESOL_q_y,xb)
-    plt.plot([x1,x2],[y1,y1],color='k') 
-    plt.plot([x2,x2],[y1,y2],color='k') 
-    step_count+=1
-    while x2>xb: # while the composition is greater than desired
-        x1,x2,y1,y2=stepping_SSOL(x2,y2,relative_volatility\
-        ,ESOL_q_x,ESOL_q_y,xb)
-        # continue stepping...
-        plt.plot([x1,x2],[y1,y1],color='k') 
-        plt.plot([x2,x2],[y1,y2],color='k') 
-        plt.text(x2-0.045,y1+0.045,step_count) # label stage
-        step_count+=1 #increment equilibrium stage counter
-    plt.plot([x2,x2],[y1,0],color='k') 
-    xb_actual=x2 
-    stages=step_count-1
-    plt.plot(x_line,y_line,color='k') # x=y line 
-    plt.plot(xa,ya_og,color='k') # equilibrium curve
-    plt.plot(xa,ya_eq,color='g',linestyle='--') # equilibrium curve (with efficiency)
-    plt.plot([xf,ESOL_q_x],[xf,ESOL_q_y],color='k') #q- line
-
-    #plt.plot([ESOL_q_x,q_eqX],[ESOL_q_y,q_eqy],color='r',linestyle='--') #q- line
-    '''UN-COMMENT TO SEE FULL q LINE ^^^'''
-
-    plt.xlabel('xa') #Just a few labels and information...
-    plt.ylabel('ya')
-    plt.text(0.6,0.5,'Rmin= '+str(round(R_min,3)))
-    plt.text(0.6,0.45,'R= '+str(round(R,3)))
-    plt.text(0.6,0.4,'xb actual= '+str(round(xb_actual,3)))
-    plt.text(0.6,0.35,'Stages= '+str(stages))
-    plt.text(0.6,0.3,'Feed Stage= '+str(feed_stage))
-    plt.title('xd='+str(xd)+'\n'+\
-    'xb='+str(xb)+\
-    '   xd='+str(xd)+'\n'+\
-    'zf='+str(xf)+\
-    '    q='+str(round(q,3))+'\n'+\
-    'R='+str(R_factor)+'*Rmin'+\
-    '   Murphree Efficiency='+str(nm))
-    plt.grid(True) # wack the grid on for bonus points
+    # --- 5. FINISH ---
+    title_str = f"Stages: {stage_count} | Feed @ Stage: {manual_feed_stage if manual_feed_stage else 'Auto'}"
+    title_str += f"\nR={round(R,2)} | Tray Eff={nm} | Reboiler Eff=1.0"
+    
+    plt.title(title_str)
+    plt.xlabel("x (Liquid Mole Fraction)")
+    plt.ylabel("y (Vapor Mole Fraction)")
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.grid(True)
     plt.show()
-    return
 
-
-'''PARAMETERS'''
-
-PaVap=179.2  # Vapour pressure of a
-PbVap=74.3   # Vapour pressure of b 
-xd=0.975     # Distillate composition 
-xb=0.025     # Bottoms composition 
-xf=0.5       # Feed composition 
-q=0.5       # q 
-R_factor=1.3 # Reflux ratio = R_min* R_factor
-nm=0.75     #Murphree Efficiency
-
-
-McCabeThiele(PaVap,PbVap,R_factor,xf,xd,xb,q,nm)
+# --- INPUTS ---
+# Try changing manual_feed_stage to an integer (e.g., 4) or None
+McCabeThiele_Advanced(x_vle, y_vle, 
+                      R_factor=1, 
+                      xf=0.07143, 
+                      xd=0.7184, 
+                      xb=0.00595, 
+                      q=1.14, 
+                      nm=1, 
+                      manual_feed_stage=None)
