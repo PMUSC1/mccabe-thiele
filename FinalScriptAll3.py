@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 # ==================================================
 # VLE DATA
@@ -61,6 +62,7 @@ def count_theoretical_stages(R, xf, xd, xb, q):
         curr_y = get_y_eq(curr_x)
         pts.append((curr_x, curr_y))
 
+        # Optimal switching: Switch when vapor y passes intersection yi
         if curr_y < yi:
             next_x = (curr_y - c_strip) / m_strip
             max_strip_x = max(max_strip_x, next_x)
@@ -82,16 +84,13 @@ def count_theoretical_stages(R, xf, xd, xb, q):
     return pts, count, max_strip_x
 
 # ==================================================
-# REAL COLUMN MODEL (FIXED FEED)
+# REAL COLUMN MODEL (OPTIMAL FEED)
 # ==================================================
 def run_real_column(nm, n_trays, R, xf, xd, xb, q):
 
     m_rect, c_rect, m_strip, c_strip, xi, yi = get_op_lines(
         R, xf, xd, xb, q
     )
-
-    FEED_TRAY_FROM_TOP = 6
-    FEED_TRAY_FROM_BOTTOM = n_trays - FEED_TRAY_FROM_TOP
 
     pts = [(xb, xb)]
 
@@ -103,16 +102,19 @@ def run_real_column(nm, n_trays, R, xf, xd, xb, q):
     max_strip_x = xi
 
     for i in range(n_trays):
-        # Stripping (below feed)
-        if i < FEED_TRAY_FROM_BOTTOM:
+        
+        # --- OPTIMAL FEED LOGIC ---
+        # If current vapor y is below intersection yi, use Stripping line.
+        # Otherwise, switch to Rectifying line.
+        if curr_y < yi:
             curr_x = (curr_y - c_strip) / m_strip
             max_strip_x = max(max_strip_x, curr_x)
-        # Rectifying (above feed)
         else:
             curr_x = (curr_y - c_rect) / m_rect
 
         pts.append((curr_x, curr_y))
 
+        # Apply Murphree Efficiency
         y_eq = get_y_eq(curr_x)
         curr_y = curr_y + nm * (y_eq - curr_y)
 
@@ -125,17 +127,18 @@ def run_real_column(nm, n_trays, R, xf, xd, xb, q):
 # ==================================================
 def solve_murphree_eff(n_trays, R, xf, xd, xb, q):
     low = 0.01
-    high = 2.0
+    high = 2.0  # Allow > 100% just in case
 
     for _ in range(50):
         mid = (low + high) / 2
         _, error, _ = run_real_column(
             mid, n_trays, R, xf, xd, xb, q
         )
-        if error < 0:
-            high = mid
-        else:
+        # If error > 0, we haven't reached Xd yet (efficiency too low)
+        if error > 0:
             low = mid
+        else:
+            high = mid
 
     return mid
 
@@ -159,6 +162,7 @@ def run_case(case_num, n_trays, R, xf, xd, xb, q):
 
     # ---- Plot ----
     plt.figure(figsize=(9, 9))
+    
 
     # Equilibrium (Purple)
     plt.plot(x_vle, y_vle, 'tab:purple', lw=2, label='Equilibrium') 
@@ -200,11 +204,10 @@ def run_case(case_num, n_trays, R, xf, xd, xb, q):
     plt.plot(xf, xf, 'ko', ms=7)
     plt.plot(xd, xd, 'ko', ms=7)
 
-    # -- LABELS FIXED HERE --
-    # Xb moved to the RIGHT (+0.02) and unbolded
+    # -- LABELS --
+    # Xb to the RIGHT (+0.02)
     plt.text(xb + 0.02, xb, 'Xb', ha='left', va='center')
     
-    # Xf and Xd kept below
     plt.text(xf, xf - 0.03, 'Xf', ha='center', va='top')
     plt.text(xd, xd - 0.03, 'Xd', ha='center', va='top')
 
@@ -250,9 +253,25 @@ def run_case(case_num, n_trays, R, xf, xd, xb, q):
 # ==================================================
 cases = [
     # (N trays, R, xf, xd, xb, q)
-    (8, 1, 0.0714, 0.7199, 0.0112, 1.146),
-    (8, 1, 0.0702, 0.7009, 0.006633,  1.141),
-    (8, 999, 0.0714, 0.7184,   0.00595,  1)
+    # (8, 1, 0.0714, 0.7199, 0.0112, 1.146),
+    # (8, 1, 0.0702, 0.7009, 0.006633,  1.141),
+    # (8, 999, 0.0714, 0.7184,   0.00595,  1)
+    #(N trays, R, xf, xd, xb, q)
+
+    # #partial 1
+    # (8, 1, 0.0714, 0.7145, 0.0112, 1.146),
+    # (8, 1, 0.0714, 0.7215, 0.0112,  1.146),
+    # (8, 1, 0.0714, 0.7238,   0.0112,  1.146)
+
+    # #partial 2
+    # (8, 1, 0.0702, 0.6811, 0.00709, 1.141),
+    # (8, 1, 0.0702, 0.6854, 0.00640,  1.141),
+    # (8, 1, 0.0702, 0.7009,   0.0064,  1.141)
+
+    #Total
+    (8, 999, 0.0714, 0.7145, 0.00368, 1),
+    (8, 999, 0.0714, 0.7122, 0.00709,  1),
+    (8, 999, 0.0714, 0.729,   0.00709,  1)
 ]
 
 # ==================================================
